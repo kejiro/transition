@@ -13,7 +13,7 @@ it can be used standalone, but it integrates nicely with [GORM](https://github.c
 Embed `transition.Transition` into your struct, it will enable the state machine feature for the struct:
 
 ```go
-import "github.com/qor/transition"
+import "github.com/kejiro/transition"
 
 type Order struct {
   ID uint
@@ -51,10 +51,10 @@ OrderStateMachine.State("paid_cancelled")
 OrderStateMachine.Event("checkout").To("checkout").From("draft")
 
 // Define another event and what to do before and after performing the transition.
-OrderStateMachine.Event("paid").To("paid").From("checkout").Before(func(order interface{}, tx *gorm.DB) error {
+OrderStateMachine.Event("paid").To("paid").From("checkout").Before(func(ctx context.Context, order interface{}, tx *gorm.DB) error {
   // business logic here
   return nil
-}).After(func(order interface{}, tx *gorm.DB) error {
+}).After(func(ctx context.Context, order interface{}, tx *gorm.DB) error {
   // business logic here
   return nil
 })
@@ -62,7 +62,7 @@ OrderStateMachine.Event("paid").To("paid").From("checkout").Before(func(order in
 // Different state transitions for one event
 cancellEvent := OrderStateMachine.Event("cancel")
 cancellEvent.To("cancelled").From("draft", "checkout")
-cancellEvent.To("paid_cancelled").From("paid").After(func(order interface{}, tx *gorm.DB) error {
+cancellEvent.To("paid_cancelled").From("paid").After(func(ctx context.Context, order interface{}, tx *gorm.DB) error {
   // Refund
 }})
 ```
@@ -70,14 +70,14 @@ cancellEvent.To("paid_cancelled").From("paid").After(func(order interface{}, tx 
 ### Trigger an Event
 
 ```go
-// func (*StateMachine) Trigger(name string, value Stater, tx *gorm.DB, notes ...string) error
-OrderStatemachine.Trigger("paid", &order, db, "charged offline by jinzhu")
+// func (*StateMachine) Trigger(ctx context.Context, name string, value Stater, tx *gorm.DB, notes ...string) error
+OrderStatemachine.Trigger(ctx, "paid", &order, db, "charged offline by jinzhu")
 // notes will be used to generate state change logs when works with GORM
 
 // When using without GORM, just pass nil to the db, like
-OrderStatemachine.Trigger("cancel", &order, nil)
+OrderStatemachine.Trigger(ctx, "cancel", &order, nil)
 
-OrderStatemachine.Trigger("cancel", &order, db)
+OrderStatemachine.Trigger(ctx, "cancel", &order, db)
 // order's state will be changed to cancelled if current state is "draft"
 // order's state will be changed to paid_cancelled if current state is "paid"
 ```
