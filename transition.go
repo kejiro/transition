@@ -5,9 +5,7 @@ import (
 	"strings"
 
 	"github.com/jinzhu/gorm"
-	"github.com/qor/admin"
-	"github.com/qor/qor/resource"
-	"github.com/qor/roles"
+	"context"
 )
 
 // Transition is a struct, embed it in your struct to enable state machine for the struct
@@ -68,7 +66,7 @@ func (sm *StateMachine) Event(name string) *Event {
 }
 
 // Trigger trigger an event
-func (sm *StateMachine) Trigger(name string, value Stater, tx *gorm.DB, notes ...string) error {
+func (sm *StateMachine) Trigger(ctx context.Context, name string, value Stater, tx *gorm.DB, notes ...string) error {
 	var (
 		newTx    *gorm.DB
 		stateWas = value.GetState()
@@ -114,7 +112,7 @@ func (sm *StateMachine) Trigger(name string, value Stater, tx *gorm.DB, notes ..
 
 			// Transition: before
 			for _, before := range transition.befores {
-				if err := before(value, newTx); err != nil {
+				if err := before(ctx, value, newTx); err != nil {
 					return err
 				}
 			}
@@ -133,7 +131,7 @@ func (sm *StateMachine) Trigger(name string, value Stater, tx *gorm.DB, notes ..
 
 			// Transition: after
 			for _, after := range transition.afters {
-				if err := after(value, newTx); err != nil {
+				if err := after(ctx, value, newTx); err != nil {
 					value.SetState(stateWas)
 					return err
 				}
@@ -193,8 +191,8 @@ func (event *Event) To(name string) *EventTransition {
 type EventTransition struct {
 	to      string
 	froms   []string
-	befores []func(value interface{}, tx *gorm.DB) error
-	afters  []func(value interface{}, tx *gorm.DB) error
+	befores []func(ctx context.Context, value interface{}, tx *gorm.DB) error
+	afters  []func(ctx context.Context, value interface{}, tx *gorm.DB) error
 }
 
 // From used to define from states
@@ -204,38 +202,13 @@ func (transition *EventTransition) From(states ...string) *EventTransition {
 }
 
 // Before register before hooks
-func (transition *EventTransition) Before(fc func(value interface{}, tx *gorm.DB) error) *EventTransition {
+func (transition *EventTransition) Before(fc func(ctx context.Context, value interface{}, tx *gorm.DB) error) *EventTransition {
 	transition.befores = append(transition.befores, fc)
 	return transition
 }
 
 // After register after hooks
-func (transition *EventTransition) After(fc func(value interface{}, tx *gorm.DB) error) *EventTransition {
+func (transition *EventTransition) After(fc func(ctx context.Context, value interface{}, tx *gorm.DB) error) *EventTransition {
 	transition.afters = append(transition.afters, fc)
 	return transition
-}
-
-// ConfigureQorResource used to configure transition for qor admin
-func (transition *Transition) ConfigureQorResource(res resource.Resourcer) {
-	if res, ok := res.(*admin.Resource); ok {
-		if meta := res.GetMeta("State"); meta.Permission == nil {
-			meta.Permission = roles.Deny(roles.Update, roles.Anyone).Deny(roles.Create, roles.Anyone)
-		}
-
-		res.OverrideIndexAttrs(func() {
-			res.IndexAttrs(res.IndexAttrs(), "-StateChangeLogs")
-		})
-
-		res.OverrideShowAttrs(func() {
-			res.ShowAttrs(res.ShowAttrs(), "-StateChangeLogs")
-		})
-
-		res.OverrideNewAttrs(func() {
-			res.NewAttrs(res.NewAttrs(), "-StateChangeLogs")
-		})
-
-		res.OverrideEditAttrs(func() {
-			res.EditAttrs(res.EditAttrs(), "-StateChangeLogs")
-		})
-	}
 }
